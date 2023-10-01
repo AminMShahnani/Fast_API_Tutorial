@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
+from  fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 import models
@@ -16,7 +17,7 @@ class CreateUser(BaseModel):
     password: str
 
 
-bcrypt_context = CryptContext(schemes=["bcrypt"], depricated="auto")
+bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -32,10 +33,20 @@ def get_db() :
 def get_password_hash(password):
     return bcrypt_context.hash(password)
 
+def verify_password(plain_password, hashed_password):
+    return bcrypt_context.verify(plain_password, hashed_password)
+
+def authenticate_user(username: str, password: str, db):
+    user = db.query(models.Users).filter(models.Users.username == username).first()
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
 
 @app.post("/create/user")
 async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)):
-    create_user_model = models.User()
+    create_user_model = models.Users()
 
     create_user_model.email = create_user.email
     create_user_model.username = create_user.username
@@ -47,10 +58,21 @@ async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)
     create_user_model.hashed_password = hashed_password
     create_user_model.is_active = True
 
-    db.add(create_new_user)
+    print(create_user_model)
+    db.add(create_user_model)
     db.commit()
 
-    return successful_response
+    return successful_response(200)
+
+
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user= authenticate_user(form_data.username, form_data.password, db)
+    if not user:
+        return http_exception(404)
+    return "User Validate"
+
+
 
 
 def successful_response(status_code: int) :
