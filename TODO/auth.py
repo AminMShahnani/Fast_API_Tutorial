@@ -5,7 +5,7 @@ from passlib.context  import CryptContext
 from jose import jwt, JWTError
 from pydantic import BaseModel
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
 import models
@@ -71,12 +71,12 @@ async def get_current_user(token: str = Depends(oauth2_bearer)):
         username: str = payload.get("sub")
         user_id: int = payload.get("id")
         if username is None or user_id is None:
-            raise http_exception()
+            raise get_user_exception()
         return {"username": username, "id": user_id}
     except JWTError:
-        raise http_exception()
+        raise get_user_exception()
     
-    
+
 @app.post("/create/user")
 async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)):
     create_user_model = models.Users()
@@ -95,28 +95,33 @@ async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)
     db.add(create_user_model)
     db.commit()
 
-    return successful_response(200)
+    return get_user_exception()
 
 
 @app.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user= authenticate_user(form_data.username, form_data.password, db)
     if not user:
-        return http_exception(404)
+        return token_exception()
     
     token_expires = timedelta(minutes=20)
     token = create_access_token(user.username, user.id, expires_delta=token_expires)
     return {"token": token}
 
 
+def get_user_exception() :
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    return credentials_exception
 
+def token_exception():
+    token_exception_response = HTTPException(
+        status_code = status.HTTP_401_UNAUTHORIZED,
+        detail = "Incorrect username or password",
+        headers = {"WWW-Authenticate": "Bearer"}
+    )
 
-def successful_response(status_code: int) :
-    return {
-        'status': status_code,
-        'transaction': 'Successful'
-    }
-
-
-def http_exception() :
-    return HTTPException(status_code=404, detail="User Not Found!")
+    return token_exception_response
