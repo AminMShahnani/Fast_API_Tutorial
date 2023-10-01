@@ -1,15 +1,17 @@
+from datetime import datetime, timedelta
+from typing import Optional
+
+from passlib.context  import CryptContext
+from jose import jwt, JWTError
+from pydantic import BaseModel
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from datetime import datetime, timedelta
-from jose import jwt
-from pydantic import BaseModel
-from typing import Optional
-import models
 
+import models
 from sqlalchemy.orm import Session
 from database import engine, LocalSession
 
-from passlib.context  import CryptContext 
 
 SECRET_KEY = "D89D771175DB1C1422364C342C9A7"
 ALGORITHM = "HS256"
@@ -63,6 +65,18 @@ def create_access_token(username: str, user_id: int, expires_delta: Optional[tim
     encode.update({"exp": expire})
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
+async def get_current_user(token: str = Depends(oauth2_bearer)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        user_id: int = payload.get("id")
+        if username is None or user_id is None:
+            raise http_exception()
+        return {"username": username, "id": user_id}
+    except JWTError:
+        raise http_exception()
+    
+    
 @app.post("/create/user")
 async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)):
     create_user_model = models.Users()
@@ -105,4 +119,4 @@ def successful_response(status_code: int) :
 
 
 def http_exception() :
-    return HTTPException(status_code=404, detail="Todo Not Found!")
+    return HTTPException(status_code=404, detail="User Not Found!")
